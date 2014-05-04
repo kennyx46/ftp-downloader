@@ -31,6 +31,28 @@ class FtpDownloader < Net::FTP
     super(@curr_connect[:host], @curr_connect[:user], @curr_connect[:pwd])
   end
 
+  def parse_argv
+    params = {}
+    option_parser = OptionParser.new do |opts|
+      opts.on('--names [ARG]') do |v|
+        # puts v
+        params[:names] = v
+      end
+      opts.on('--b [ARG]') do |v|
+        puts v
+      end
+      opts.on('-h', '--help') do
+        puts 'tool for building abbot presentations'
+        exit
+      end
+    end
+    begin option_parser.parse!(ARGV)
+    rescue OptionParser::InvalidOption => e
+      # puts 'shit!!!'
+    end
+    params
+  end
+
   def load_packs(*args)
     args.each do |pack|
       if @products.include? pack

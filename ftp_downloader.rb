@@ -1,76 +1,106 @@
 require 'net/ftp'
 require 'optparse'
-require 'git'
 require 'logger'
+require 'yaml'
 
 class FtpDownloader < Net::FTP
-  attr_reader :options, :curr_connect
+  attr_reader :options, :items
 
   def initialize
     @options = {}
-    @connection_opts = {
-      full_sb: {
-        host: 'my_host.com',
-        user: 'i',
-        pwd: '***'
-      },
-      prod: {
-        host: 'my_host_prod.com',
-        user: 'she',
-        pwd: '*****'
-      }
+    @env = :full_sb
+    @folders = {
+        full_sb: 'FullSandbox',
+        prod: 'Production',
+        product: 'Product',
+        specialty: 'Specialty'
     }
-    @default_opts = {
-      verbose: false,
-      env: :full_sb
+    @connection = {
+        host: '5.9.155.211',
+        user: 'ftpuser',
+        pwd: 'kdffgDjdfg978D'
     }
-    @options.merge!(@default_opts)
-    @curr_connect = @connection_opts[@options[:env]]
-    @products = ['klacid', 'ontime', 'irs']
-    @specialities = ['gi', 'ge']
-    super(@curr_connect[:host], @curr_connect[:user], @curr_connect[:pwd])
+
+    parse_argv
+    load_config
+    super(@connection[:host], @connection[:user], @connection[:pwd])
+  end
+
+  def load_config
+    begin
+      @names = YAML.load_file('config.yml')
+    rescue Errno::ENOENT => e
+      puts 'no config file, please provide'
+      exit
+    end
+    @names.each { |k, v| @names[k] = v.split ' ' }
   end
 
   def parse_argv
-    params = {}
     option_parser = OptionParser.new do |opts|
-      opts.on('--names [ARG]') do |v|
-        # puts v
-        params[:names] = v
-      end
-      opts.on('--b [ARG]') do |v|
-        puts v
-      end
-      opts.on('-h', '--help') do
-        puts 'tool for building abbot presentations'
-        exit
-      end
+      opts.on('--names [ARG]')  { |v| @items = v.split ',' }
+      opts.on('--env [ARG]')    { |v| @env = :prod if v =~ /prod/ }
+      opts.on('--build [ARG]')  { options[:build] = true }
+      opts.on('-h', '--help') { puts 'tool for building abbot presentations'; exit }
     end
-    begin option_parser.parse!(ARGV)
+    begin
+      option_parser.parse!(ARGV)
     rescue OptionParser::InvalidOption => e
       # puts 'shit!!!'
     end
-    params
   end
 
-  def load_packs(*args)
-    args.each do |pack|
-      if @products.include? pack
-        chdir('products')
-        pull(pack)
-      else
-        chdir('speciality')
+  def remote_path(type)
+    puts "#{@folders[@env]}/#{@folders[type]}/"
+  end
+  private :remote_path
+
+  def local_path(type, item = '')
+    path = if type == :specialty
+             "abbott_scenario_builder/"
+           else
+             ""
+           end
+    "#{path}packs/#{item}.zip"
+  end
+  private :local_path
+
+  def load_packs
+    @items.each do |item|
+      item.slice! '.json'
+      type = if is_product?(item)
+               :product
+             elsif is_specialty?(item)
+               :specialty
+             else
+               puts 'there is no such product'
+               nil
+             end
+      if type
+        path_to_file = local_path(type, item)
+        unless File.exist?(path_to_file)
+          puts "no such zip #{path_to_file}"
+          next
+        end
+        chdir "/#{remote_path(type)}"
+        puts "downloaded #{path_to_file}"
+        #put path_to_file
       end
-      build("", zip: false)
-      put(pack)
-      puts "file #{pack} was downloaded to the server"
     end
+
   end
 
-  def pull(dir, branch = "master")
-    # g = Git.open(pack, log: Logger.new(STDOUT))
-    g.pull(dir, branch)
+  def is_product?(item)
+    @names['product'].include?(item)
   end
+
+  private :is_product?
+
+  def is_specialty?(item)
+    @names['specialty'].include?(item)
+  end
+
+  private :is_specialty?
 
   def build(names, opts = {})
     opts.merge!(zip: 'pack')
@@ -81,4 +111,5 @@ class FtpDownloader < Net::FTP
 end
 
 ftp_downloader = FtpDownloader.new
-puts ftp_downloader.options
+ftp_downloader.load_packs
+#puts ftp_downloader.closed?
